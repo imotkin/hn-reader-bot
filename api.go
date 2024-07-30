@@ -32,12 +32,12 @@ const (
 func SendRequest[T any](method, URL string) (t T, err error) {
 	req, err := http.NewRequest(method, URL, nil)
 	if err != nil {
-		return t, fmt.Errorf("create HTTP request: %v", err)
+		return t, fmt.Errorf("create HTTP request: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return t, fmt.Errorf("send HTTP request: %v", err)
+		return t, fmt.Errorf("send HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -52,7 +52,7 @@ func SendRequest[T any](method, URL string) (t T, err error) {
 func GetStory(id int) (s Story, err error) {
 	s, err = SendRequest[Story](http.MethodGet, fmt.Sprintf("%s/item/%d.json", apiURL, id))
 	if err != nil {
-		return s, fmt.Errorf("send API request: %v", err)
+		return s, fmt.Errorf("send API request: %w", err)
 	}
 
 	log.Printf("Get story: %s (%d)", s.Title, s.ID)
@@ -63,7 +63,7 @@ func GetStory(id int) (s Story, err error) {
 func Stories(t storiesType) (stories []int, err error) {
 	stories, err = SendRequest[[]int](http.MethodGet, fmt.Sprintf("%s/%sstories.json", apiURL, t))
 	if err != nil {
-		return nil, fmt.Errorf("send API request: %v", err)
+		return nil, fmt.Errorf("send API request: %w", err)
 	}
 
 	return

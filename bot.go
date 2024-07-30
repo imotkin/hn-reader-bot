@@ -40,7 +40,7 @@ func (b *Bot) Start() error {
 
 	bot, err := tgbotapi.NewBotAPI(b.token)
 	if err != nil {
-		return fmt.Errorf("telegram API connection: %v", err)
+		return fmt.Errorf("telegram API connection: %w", err)
 	}
 
 	commandsList := tgbotapi.NewSetMyCommands([]tgbotapi.BotCommand{
@@ -50,7 +50,7 @@ func (b *Bot) Start() error {
 		{Command: "/top", Description: "Get top stories"}}...)
 
 	if _, err = bot.Request(commandsList); err != nil {
-		return fmt.Errorf("set commands: %v", err)
+		return fmt.Errorf("set commands: %w", err)
 	}
 
 	u := tgbotapi.NewUpdate(0)
@@ -105,7 +105,7 @@ func (b *Bot) Start() error {
 
 			_, err = bot.Send(msg)
 			if err != nil {
-				log.Printf("send message: %v", err)
+				log.Printf("send message: %w", err)
 			}
 		}
 	}
