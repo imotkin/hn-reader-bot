@@ -105,7 +105,7 @@ func (b *Bot) Start() error {
 
 			_, err = bot.Send(msg)
 			if err != nil {
-				log.Printf("send message: %w", err)
+				log.Printf("send message: %v", err)
 			}
 		}
 	}
