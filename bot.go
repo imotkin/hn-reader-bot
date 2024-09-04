@@ -119,7 +119,7 @@ func (b *Bot) HandleMessage(msg *tgbotapi.Message) (response tgbotapi.MessageCon
 			return
 		}
 
-		response.Text = b.PrintStories(stories)
+		response.Text = b.StoriesText(stories)
 		response.ParseMode = tgbotapi.ModeHTML
 	default:
 		response.Text = messageNotFound
@@ -128,7 +128,7 @@ func (b *Bot) HandleMessage(msg *tgbotapi.Message) (response tgbotapi.MessageCon
 	return
 }
 
-func (b *Bot) PrintStories(stories []int) string {
+func (b *Bot) StoriesText(stories []int) string {
 	sb.Reset()
 
 	selected := stories[:storiesLimit]
