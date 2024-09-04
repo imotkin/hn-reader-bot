@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -17,98 +16,142 @@ const (
 	messageInvalidFormat = "Your message doesn't contain any command. Please try again!"
 	messageError         = "Server error... oops"
 
+	loggingTemplate = "Time: %s / User: %s / Text: %s"
+
 	storiesLimit = 10
 
 	timeFormatFull  = "02-01-2006 15:04:05"
 	timeFormatShort = "02-01-2006 15:04"
 )
 
-var text strings.Builder
+var (
+	sb strings.Builder
+
+	ErrEmptyToken = errors.New("empty token")
+	ErrConnectAPI = errors.New("telegram API connection")
+
+	commands = []tgbotapi.BotCommand{
+		{Command: "/start", Description: "Start the bot"},
+		{Command: "/best", Description: "Show best stories"},
+		{Command: "/new", Description: "Show new stories"},
+		{Command: "/top", Description: "Show top stories"},
+		{Command: "/job", Description: "Show job stories"},
+		{Command: "/ask", Description: "Show ask stories"},
+		{Command: "/poll", Description: "Show poll stories"},
+	}
+)
 
 type Bot struct {
-	token string
+	api     *tgbotapi.BotAPI
+	client  *ClientAPI
+	token   string
+	logging bool
 }
 
-func NewBot() *Bot {
-	return &Bot{token: os.Getenv("BOT_TOKEN")}
+func NewBot(token string, logging bool) *Bot {
+	return &Bot{
+		token:   token,
+		logging: logging,
+		client:  NewClientAPI(),
+	}
 }
 
-func (b *Bot) Start() error {
+func (b *Bot) Init() error {
 	if b.token == "" {
-		return errors.New("empty token")
+		return ErrEmptyToken
 	}
 
-	bot, err := tgbotapi.NewBotAPI(b.token)
+	api, err := tgbotapi.NewBotAPI(b.token)
 	if err != nil {
-		return fmt.Errorf("telegram API connection: %w", err)
+		return ErrConnectAPI
 	}
 
-	commandsList := tgbotapi.NewSetMyCommands([]tgbotapi.BotCommand{
-		{Command: "/start", Description: "Start the bot"},
-		{Command: "/best", Description: "Get best stories"},
-		{Command: "/new", Description: "Get new stories"},
-		{Command: "/top", Description: "Get top stories"}}...)
+	b.api = api
 
-	if _, err = bot.Request(commandsList); err != nil {
+	cmds := tgbotapi.NewSetMyCommands(commands...)
+
+	if _, err = b.api.Request(cmds); err != nil {
 		return fmt.Errorf("set commands: %w", err)
 	}
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
+	return nil
+}
 
-	updates := bot.GetUpdatesChan(u)
+func (b *Bot) Start() {
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 30
+
+	updates := b.api.GetUpdatesChan(u)
 
 	for update := range updates {
-		log.Printf(
-			"Time: %s / User: %s / Text: %s",
-			update.Message.Time().Format(timeFormatFull),
-			update.SentFrom().UserName,
-			update.Message.Text,
-		)
+		if b.logging {
+			b.LogUpdate(update)
+		}
 
-		if update.Message != nil {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
+		msg := b.HandleMessage(update.Message)
 
-			if update.Message.IsCommand() {
-				cmd := storiesType(update.Message.Command())
-
-				switch cmd {
-				case New, Best, Top:
-					stories, err := Stories(cmd)
-					if err != nil {
-						msg.Text = messageError
-						break
-					}
-
-					selected := stories[:storiesLimit]
-
-					for _, id := range selected {
-						story, _ := GetStory(id)
-						text.WriteString(fmt.Sprintf(
-							messageTemplate,
-							story.ID, story.Title,
-							story.By, story.By,
-							time.Unix(story.Time, 0).Format(timeFormatShort),
-							story.Descendants,
-						))
-					}
-
-					msg.ParseMode = tgbotapi.ModeHTML
-					msg.Text = text.String()
-					text.Reset()
-				default:
-					msg.Text = messageNotFound
-				}
-			} else {
-				msg.Text = messageInvalidFormat
-			}
-
-			_, err = bot.Send(msg)
-			if err != nil {
-				log.Printf("send message: %v", err)
-			}
+		_, err := b.api.Send(msg)
+		if err != nil {
+			log.Printf("send message: %v", err)
 		}
 	}
+}
 
-	return nil
+func (b *Bot) HandleMessage(msg *tgbotapi.Message) (response tgbotapi.MessageConfig) {
+	if msg == nil {
+		return
+	}
+
+	response = tgbotapi.NewMessage(msg.Chat.ID, "")
+
+	if !msg.IsCommand() {
+		response.Text = messageInvalidFormat
+		return
+	}
+
+	command := StoriesType(msg.Command())
+
+	switch command {
+	case New, Best, Top, Ask, Job, Poll:
+		stories, err := b.client.Stories(command)
+		if err != nil {
+			response.Text = messageError
+			return
+		}
+
+		response.Text = b.PrintStories(stories)
+		response.ParseMode = tgbotapi.ModeHTML
+	default:
+		response.Text = messageNotFound
+	}
+
+	return
+}
+
+func (b *Bot) PrintStories(stories []int) string {
+	sb.Reset()
+
+	selected := stories[:storiesLimit]
+
+	for _, id := range selected {
+		story, _ := b.client.GetStory(id)
+		sb.WriteString(fmt.Sprintf(
+			messageTemplate,
+			story.ID, story.Title,
+			story.By, story.By,
+			time.Unix(story.Time, 0).Format(timeFormatShort),
+			story.Descendants,
+		))
+	}
+
+	return sb.String()
+}
+
+func (b *Bot) LogUpdate(u tgbotapi.Update) {
+	log.Printf(
+		loggingTemplate,
+		u.Message.Time().Format(timeFormatFull),
+		u.SentFrom().UserName,
+		u.Message.Text,
+	)
 }
